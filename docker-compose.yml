@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 16 Database
+  db:
+    image: postgres:16-alpine
+    container_name: sih26017_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sih26017
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres_password_2026}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/app/schema_postgres.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./backend/app/seed_postgres_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d sih26017"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin 4 Web GUI Interface
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sih26017_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@sih.gov.in}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - pgadmindata:/var/lib/pgadmin
+
+  # FastAPI Backend & ML Service
+  backend:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: sih26017_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://app:${DB_PASSWORD:-postgres_password_2026}@db:5432/sih26017
+      JWT_SECRET: ${JWT_SECRET:-sih26017_ministry_rural_dev_secret_key_2026_x7a9q2}
+    ports:
+      - "8000:8000"
+
+  # React Frontend (Vite + Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sih26017_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
+  pgadmindata:
